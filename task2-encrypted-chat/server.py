@@ -10,7 +10,8 @@ SOCK.bind(
 symmetric_key = "NIS2018"
 
 des_client = pyDes.des(
-    bytes(symmetric_key),      # symmetric key
+    #bytes(symmetric_key, 'utf8'),   # symmetric key
+    b"DESCRYPT",
     pyDes.CBC,              # cipher block chaining
     b"\0\0\0\0\0\0\0\0",    # initial value/seed, needed for CBC
     pad=None,               # not required if using PKCS5
@@ -31,18 +32,30 @@ def gen_nonce():
     pass
 
 def handle_client(client_sock):
-    
-    client_sock.send(
-        bytes( encrypt("Hello"), "utf8") 
-    )
 
+    def handle():
+        while True:
+            print (client_sock)
+            client_sock.send(
+                bytes( input('You: '), "utf8") 
+            )
+            rsp = client_sock.recv(1024).decode("utf8")
+            print ('Client: %s' % rsp)
+    try:
+        handle()
+    except Exception as e:
+        print ("Error, server shutting down:\nError was: ", e)
+        client_sock.close()
+        return
+
+    
 
 def accept_connection():
     """ function that accepts a new connection and starts a thread to handle connection with the client """
     
     client_sock, addr = SOCK.accept()
-
-    print ("%s has joined the building" % addr)
+    print (client_sock, addr)
+    print ("{} joined the building".format(addr))
     
     # create thread to handle client connection
     threading.Thread(
@@ -56,13 +69,15 @@ if __name__ == "__main__":
 
     # accept only 1 connection for now, to simplify
     SOCK.listen(1)
-
+    
     print ("Waiting for client to connect")
     accept = threading.Thread(
         target=accept_connection,
     )
-    accept.start()
-    accept.join()
-
-    SOCK.close()
+    try:
+        accept.start()
+        accept.join()
+    except Exception as e:
+        print ("Error, server shutting down")
+        SOCK.close()
     exit(0)

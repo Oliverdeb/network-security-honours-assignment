@@ -2,8 +2,10 @@
 server:
 	./venv/bin/python3 server.py
 
-run: server
+client:
 	./venv/bin/python3 client.py
+
+run: server client
 
 setup:
 	if [ ! -f ./venv/bin/pip ]; then \
