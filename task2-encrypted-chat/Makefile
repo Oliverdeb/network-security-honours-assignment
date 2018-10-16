@@ -1,3 +1,4 @@
+run: setup server client
 
 server:
 	./venv/bin/python3 server.py
@@ -5,13 +6,11 @@ server:
 client:
 	./venv/bin/python3 client.py
 
-run: server client
-
 setup:
 	if [ ! -f ./venv/bin/pip ]; then \
-			virtualenv -p python3 ./venv; fi
-
-	./venv/bin/pip install -Ur requirements.txt
+		virtualenv -p python3 ./venv; \
+		./venv/bin/pip install -Ur requirements.txt; \
+	fi	
 
 clean:
 	@rm -rf ./venv
