@@ -3,11 +3,25 @@
 import socket, pickle, diffie_helman
 from Crypto.Cipher import AES
 import hashlib
+from os import urandom
+from base64 import b64encode
 
 SOCK = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-SOCK.connect(
-    ('localhost', 8900)
-)
+try:
+    SOCK.connect(
+        ('localhost', 8888)
+    )
+except ConnectionRefusedError as e:
+    SOCK.connect(
+        ('localhost', 8900)
+    )
+
+seen_nonces = set()
+generated_nonces = {''}
+
+def gen_nonce(length=32):
+    # generate 32 byte nonce
+    return b64encode(urandom(length))
 
 def begin_diffie_helman_key_exchange():
     """ function that initiates and facilitates DH key exchange """
@@ -49,27 +63,62 @@ def begin_diffie_helman_key_exchange():
     # return symmetric key for encryption
     return symmetric_key
 
-def pad(plaintext):
-    plaintext = bytes(plaintext, 'utf8')
-    length = 16 - (len(plaintext) % 16)
-    return plaintext + bytes([length])*length
+def pad(data):
+    length = 16 - (len(data) % 16)
+    return data + bytes([length])*length
 
-def unpad(plaintext):
-    return plaintext[:-plaintext[-1]].decode('utf8')
+def unpad(data):
+    return data[:-data[-1]]
+
+def prepare_message(AES_obj, plaintext, cnonce, snonce):
+    padded_bytes = pad(pickle.dumps(
+        (plaintext, cnonce, snonce, hashlib.sha256(bytes(plaintext, 'utf8')).hexdigest())
+    ))
+
+    return AES_obj.encrypt(padded_bytes)
 
 def receive(AES_obj):
     """ main function that is responsible for receiving and sending messages from the server """
 
     while True:
         try:
-            msg = SOCK.recv(1024)
-            plain = unpad(AES_obj.decrypt(msg))
-            print ('Server: %s' % plain)
-            plaintext = pad(input('You: '))
-            enc_rsp = AES_obj.encrypt(plaintext)
-            SOCK.sendall(enc_rsp)
-        except (KeyboardInterrupt, OSError) as err:  #  server has left the chat or Ctrl-C
+            msg = SOCK.recv(4096)
+            plaintext, cnonce, snonce, _hash = pickle.loads(unpad(AES_obj.decrypt(msg)))
+            # print(plaintext, cnonce, snonce, _hash)
+
+            verify = hashlib.sha256(bytes(plaintext, 'utf8')).hexdigest()
+            if _hash == verify:
+                print ('Hash received matches hash of plaintext received, message not altered:')
+                print (_hash, verify)
+
+            else:
+                print ('Hash received DOES NOT match hash of plaintext received, message has been altered:')
+                print (_hash, verify)
+            
+            if cnonce not in generated_nonces:
+                print ('received a nonce back that we did not send out! malicous attack')
+                print (cnonce, 'was received but not sent out')
+            
+            if cnonce in seen_nonces:
+                print ('REPLAY ATTACK DETECTED. Received a nonce we have seen before')
+                print (repr(cnonce), 'seen already!')
+            
+            if cnonce in generated_nonces and cnonce not in seen_nonces:
+                print ('Received valid nonce',repr(cnonce),'from client, added to history to')
+                seen_nonces.add(cnonce)
+
+            print ('Server: %s' % plaintext)
+            plaintext = input('You: ')
+
+            cnonce = gen_nonce()
+            generated_nonces.add(cnonce)
+
+            response = prepare_message(AES_obj, plaintext, cnonce, snonce)
+            SOCK.sendall(response)
+        except (KeyboardInterrupt, OSError, TypeError) as err:  #  server has left the chat or Ctrl-C
+            import traceback
             print ("Error, server quit?\n",err)
+            traceback.print_exc()
             SOCK.close()
             exit(1)
 

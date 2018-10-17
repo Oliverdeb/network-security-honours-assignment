@@ -7,11 +7,17 @@ from os import urandom
 from base64 import b64encode
 
 SOCK = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-SOCK.bind(
-    ('localhost', 8900)
-)
+try:
+    SOCK.bind(
+        ('localhost', 8888)
+    )
+except OSError as e:
+    SOCK.bind(
+        ('localhost', 8900)
+    )
 
-symmetric_key = "NIS2018"
+seen_nonces = set()
+generated_nonces = set()
 
 # des_client = pyDes.des(
 #     #bytes(symmetric_key, 'utf8'),   # symmetric key
@@ -71,29 +77,69 @@ def begin_diffie_helman_key_exchange(client):
     # return symmetric key for encryption
     return symmetric_key
 
-def pad(plaintext):
-    plaintext = bytes(plaintext, 'utf8')
-    length = 16 - (len(plaintext) % 16)
-    return plaintext + bytes([length])*length
+def pad(data):
+    length = 16 - (len(data) % 16)
+    return data + bytes([length])*length
 
-def unpad(plaintext):
-    return plaintext[:-plaintext[-1]].decode('utf8')
+def unpad(data):
+    return data[:-data[-1]]
+
+def prepare_message(AES_obj, plaintext, cnonce, snonce):
+    padded_bytes = pad(pickle.dumps(
+        (plaintext, cnonce, snonce, hashlib.sha256(bytes(plaintext, 'utf8')).hexdigest())
+    ))
+
+    return AES_obj.encrypt(padded_bytes)
 
 def handle_client(client_sock, AES_obj):
-    try:
-        while True:
-            plaintext = pad(input('You: '))
-            enc_rsp = AES_obj.encrypt(plaintext)
-            client_sock.sendall(enc_rsp)
+    cnonce = ''
 
-            msg = client_sock.recv(1024)
-            plain = unpad(AES_obj.decrypt(msg))
-            print ('Client: %s' % plain)
+    while True:
 
-    except (KeyboardInterrupt, OSError) as err: #  client has left the chat or Ctrl-C
-        print ("Error, server shutting down:\nError was: ", err)
-        client_sock.close()
-        SOCK.close()
+        try:
+            plaintext = input('You: ')
+
+            snonce = gen_nonce()
+            generated_nonces.add(snonce)
+
+            response = prepare_message(AES_obj, plaintext, cnonce, snonce)
+            client_sock.sendall(response)
+
+            msg = client_sock.recv(4096)
+            
+            plaintext, cnonce, snonce, _hash = pickle.loads(unpad(AES_obj.decrypt(msg)))
+            # print (plaintext, cnonce, snonce, _hash)
+
+            verify = hashlib.sha256(bytes(plaintext, 'utf8')).hexdigest()
+            if _hash == verify:
+                print ('Hash received matches hash of plaintext received, message not altered:')
+                print (_hash, verify)
+
+            else:
+                print ('Hash received DOES NOT match hash of plaintext received, message has been altered:')
+                print (_hash, verify)
+            
+            if snonce not in generated_nonces:
+                print ('received a nonce back that we did not send out! malicous attack')
+                print (snonce, 'was received but not sent out')
+            
+            if snonce in seen_nonces:
+                print ('REPLAY ATTACK DETECTED. Received a nonce we have seen before')
+                print (snonce, 'seen already!')
+            
+            if snonce in generated_nonces and snonce not in seen_nonces:
+                print ('Received valid nonce',snonce,'from client, added to history to')
+                seen_nonces.add(snonce)
+
+            print ('Client: %s' % plaintext)
+
+        except (TypeError, KeyboardInterrupt, OSError) as err: #  client has left the chat or Ctrl-C
+            import traceback
+            print ("Error, server shutting down:\nError was: ", err)
+            traceback.print_exc()
+            client_sock.close()
+            SOCK.close()
+            exit(1)
         # raise err
 
     
@@ -105,6 +151,7 @@ def setup_connection():
     """
 
     client, addr = SOCK.accept()
+    
     print ("Waiting for client to connect\n")
 
     print ("{} joined the building".format(addr))
