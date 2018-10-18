@@ -26,7 +26,7 @@ def gen_nonce(length=32):
 def begin_diffie_helman_key_exchange():
     """ function that initiates and facilitates DH key exchange """
 
-    banner = 'Beginning Diffie-Helman key exchange'
+    banner = 'Beginning Diffie-Helman key exchange - Task 1'
     print ('='*len(banner), banner, '='*len(banner), sep='\n')
 
     # get (g, p, 'shared term') from server
@@ -55,9 +55,9 @@ def begin_diffie_helman_key_exchange():
     # where server_shared = (g**server_secret) % p
     symmetric_key = diffie_helman.g_pow_x_mod_p(server_shared, my_secret, p)
 
-    print ('\n\ncalculated symmetric_key: {}'.format(symmetric_key))
+    print ('\ncalculated symmetric_key: {}'.format(symmetric_key))
 
-    end = 'END Diffie-Helman key exchange'
+    end = 'END Diffie-Helman key exchange - Task 1'
     print ('='*len(end), end, '='*len(end), sep='\n')
 
     # return symmetric key for encryption
@@ -79,9 +79,13 @@ def prepare_message(AES_obj, plaintext, cnonce, snonce):
 
 def receive(AES_obj):
     """ main function that is responsible for receiving and sending messages from the server """
+    banner = '='*32
+    try:
 
-    while True:
-        try:
+        while True:
+            print ()
+            print('='*70)
+
             msg = SOCK.recv(4096)
             plaintext, cnonce, snonce, _hash = pickle.loads(unpad(AES_obj.decrypt(msg)))
             # print(plaintext, cnonce, snonce, _hash)
@@ -89,11 +93,11 @@ def receive(AES_obj):
             verify = hashlib.sha256(bytes(plaintext, 'utf8')).hexdigest()
             if _hash == verify:
                 print ('Hash received matches hash of plaintext received, message not altered:')
-                print (_hash, verify)
+                print (_hash, verify,sep='\n')
 
             else:
                 print ('Hash received DOES NOT match hash of plaintext received, message has been altered:')
-                print (_hash, verify)
+                print (_hash, verify,sep='\n')
             
             if cnonce not in generated_nonces:
                 print ('received a nonce back that we did not send out! malicous attack')
@@ -104,23 +108,25 @@ def receive(AES_obj):
                 print (repr(cnonce), 'seen already!')
             
             if cnonce in generated_nonces and cnonce not in seen_nonces:
-                print ('Received valid nonce',repr(cnonce),'from client, added to history to')
+                print ('Received valid nonce',repr(cnonce),'from client, added to list of seen nonces')
                 seen_nonces.add(cnonce)
+            print('-'*70)
 
             print ('Server: %s' % plaintext)
             plaintext = input('You: ')
+            print('='*70)
 
             cnonce = gen_nonce()
             generated_nonces.add(cnonce)
 
             response = prepare_message(AES_obj, plaintext, cnonce, snonce)
             SOCK.sendall(response)
-        except (KeyboardInterrupt, OSError, TypeError) as err:  #  server has left the chat or Ctrl-C
-            import traceback
-            print ("Error, server quit?\n",err)
-            traceback.print_exc()
-            SOCK.close()
-            exit(1)
+    except (KeyboardInterrupt, OSError, TypeError) as err:  #  server has left the chat or Ctrl-C
+        import traceback
+        print ("Error, server quit?\n",err)
+        traceback.print_exc()
+        SOCK.close()
+        exit(1)
 
 def setup_DH_and_AES_encryption():
     try:
@@ -128,12 +134,17 @@ def setup_DH_and_AES_encryption():
 
         # convert to 32 bit key by hashing and truncating
         AES_key = hashlib.sha256(b'%d' % symmetric_key).hexdigest()[:32]
-
-        print ('AES key:', AES_key)
+        
+        print ()
+        banner = 'Setting up AES encryption key and IV - Task 2'
+        print('='*len(banner), banner, '='*len(banner),sep='\n')
+        print ('derived AES key from symmetric key:', AES_key)
 
         # get IV from server, can be public
         IV = SOCK.recv(1024).decode('utf8')
-        print ('IV:',IV)
+
+        print ('Received IV from server:',IV)
+        print('='*70)
 
         AES_obj = AES.new(AES_key,
             AES.MODE_CBC,

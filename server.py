@@ -19,17 +19,6 @@ except OSError as e:
 seen_nonces = set()
 generated_nonces = set()
 
-# des_client = pyDes.des(
-#     #bytes(symmetric_key, 'utf8'),   # symmetric key
-#     b"DESCRYPT",
-#     pyDes.CBC,              
-#     b"\0\0\0\0\0\0\0\0",    # initial value/seed, needed for CBC
-#     pad=None,               # not required if using PKCS5
-#     padmode=pyDes.PAD_PKCS5 # PAD_PKCS5 padmode is desirable as it is unambigous 
-#                             # where padding began when decrypting
-#                             # padding ensures all blocks are multiples of 8 bytes                           
-# )
-
 def gen_nonce(length=32):
     # generate 32 byte nonce
     return b64encode(urandom(length))
@@ -37,7 +26,7 @@ def gen_nonce(length=32):
 def begin_diffie_helman_key_exchange(client):
     """ function that initiates and facilitates DH key exchange """
 
-    banner = 'Beginning Diffie-Helman key exchange'
+    banner = 'Beginning Diffie-Helman key exchange - Task 1'
     print ('='*len(banner), banner, '='*len(banner), sep='\n')
 
     # generate common primes
@@ -69,9 +58,9 @@ def begin_diffie_helman_key_exchange(client):
     # where client_shared = (g**client_secret) % p
     symmetric_key = diffie_helman.g_pow_x_mod_p(client_shared, my_secret, p)
 
-    print ('\n\nreceived client_shared: {}\ncalculated symmetric_key: {}'.format(client_shared,symmetric_key))
+    print ('\nreceived client_shared: {}\ncalculated symmetric_key: {}'.format(client_shared,symmetric_key))
 
-    end = 'END Diffie-Helman key exchange'
+    end = 'END Diffie-Helman key exchange - Task 1'
     print ('='*len(end), end, '='*len(end), sep='\n')
 
     # return symmetric key for encryption
@@ -93,10 +82,13 @@ def prepare_message(AES_obj, plaintext, cnonce, snonce):
 
 def handle_client(client_sock, AES_obj):
     cnonce = ''
+    banner = '='*32
+    try:
 
-    while True:
+        while True:
+            print()
+            print('='*70)
 
-        try:
             plaintext = input('You: ')
 
             snonce = gen_nonce()
@@ -109,15 +101,17 @@ def handle_client(client_sock, AES_obj):
             
             plaintext, cnonce, snonce, _hash = pickle.loads(unpad(AES_obj.decrypt(msg)))
             # print (plaintext, cnonce, snonce, _hash)
+            print ('Client: %s' % plaintext)
+            print('-'*70)
 
             verify = hashlib.sha256(bytes(plaintext, 'utf8')).hexdigest()
             if _hash == verify:
                 print ('Hash received matches hash of plaintext received, message not altered:')
-                print (_hash, verify)
+                print (_hash, verify,sep='\n')
 
             else:
                 print ('Hash received DOES NOT match hash of plaintext received, message has been altered:')
-                print (_hash, verify)
+                print (_hash, verify,sep='\n')
             
             if snonce not in generated_nonces:
                 print ('received a nonce back that we did not send out! malicous attack')
@@ -128,18 +122,18 @@ def handle_client(client_sock, AES_obj):
                 print (snonce, 'seen already!')
             
             if snonce in generated_nonces and snonce not in seen_nonces:
-                print ('Received valid nonce',snonce,'from client, added to history to')
+                print ('Received valid nonce',snonce,'from client, added to list of seen nonces')
                 seen_nonces.add(snonce)
 
-            print ('Client: %s' % plaintext)
+            print('='*70)
 
-        except (TypeError, KeyboardInterrupt, OSError) as err: #  client has left the chat or Ctrl-C
-            import traceback
-            print ("Error, server shutting down:\nError was: ", err)
-            traceback.print_exc()
-            client_sock.close()
-            SOCK.close()
-            exit(1)
+    except (TypeError, KeyboardInterrupt, OSError) as err: #  client has left the chat or Ctrl-C
+        import traceback
+        print ("Error, server shutting down:\nError was: ", err)
+        traceback.print_exc()
+        client_sock.close()
+        SOCK.close()
+        exit(1)
         # raise err
 
     
@@ -149,10 +143,9 @@ def setup_connection():
     function that accepts a connection, setups up a shared key by DH key exchange and creates an AES object
     for encryption and decryption
     """
-
-    client, addr = SOCK.accept()
-    
     print ("Waiting for client to connect\n")
+
+    client, addr = SOCK.accept()    
 
     print ("{} joined the building".format(addr))
 
@@ -160,13 +153,17 @@ def setup_connection():
     
     # convert to 32 bit key by hashing and truncating
     AES_key = hashlib.sha256(b'%d' % symmetric_key).hexdigest()[:32]
-    print ('AES key:', AES_key)
+    print ()
+    banner = 'Setting up AES encryption key and IV - Task 2'
+    print('='*len(banner), banner, '='*len(banner),sep='\n')
+        
+    print ('derived AES key from symmetric key:', AES_key)
 
     IV_LENGTH = 16
 
     # generate IV randomly, take first 16 bytes
     IV = hashlib.sha256(urandom(IV_LENGTH)).hexdigest()[:16]
-    print ('IV:',IV)
+    print ('generated IV:',IV)
 
     AES_obj = AES.new(AES_key,
         AES.MODE_CBC,
@@ -174,6 +171,9 @@ def setup_connection():
     )
 
     # send IV to client
+    print ('Sending client the IV for AES encryption')
+    print('='*70)
+
     client.sendall(bytes(IV,'utf8'))
 
     handle_client(client, AES_obj)

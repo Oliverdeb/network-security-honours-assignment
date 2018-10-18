@@ -1,9 +1,9 @@
-run: setup server client
+defualt: setup
 
-server:
+server: setup
 	./venv/bin/python3 server.py
 
-client:
+client: setup
 	./venv/bin/python3 client.py
 
 setup:
