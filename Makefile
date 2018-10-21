@@ -1,4 +1,4 @@
-defualt: setup
+default: setup
 
 server: setup
 	./venv/bin/python3 server.py
