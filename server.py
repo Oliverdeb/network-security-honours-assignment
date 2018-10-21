@@ -1,12 +1,14 @@
 #! /usr/bin/python3
 
-import socket, diffie_helman, pickle
+import socket, diffie_hellman, pickle
 from Crypto.Cipher import AES
 import hashlib
 from os import urandom
 from base64 import b64encode
 
 SOCK = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
+
 try:
     SOCK.bind(
         ('localhost', 8888)
@@ -16,6 +18,8 @@ except OSError as e:
         ('localhost', 8900)
     )
 
+# hashsets of nonces that have been seen and generated
+# seen nonce hashset should idealy be one behind generated
 seen_nonces = set()
 generated_nonces = set()
 
@@ -23,20 +27,20 @@ def gen_nonce(length=32):
     # generate 32 byte nonce
     return b64encode(urandom(length))
 
-def begin_diffie_helman_key_exchange(client):
+def begin_diffie_hellman_key_exchange(client):
     """ function that initiates and facilitates DH key exchange """
 
     banner = 'Beginning Diffie-Helman key exchange - Task 1'
     print ('='*len(banner), banner, '='*len(banner), sep='\n')
 
     # generate common primes
-    g, p = diffie_helman.gen_random_prime(), diffie_helman.gen_random_prime()
+    g, p = diffie_hellman.gen_random_prime(), diffie_hellman.gen_random_prime()
         
     # generate my secret
-    my_secret = diffie_helman.gen_random_prime()
+    my_secret = diffie_hellman.gen_random_prime()
 
     # calculates ( g ** my_secret ) % p
-    my_shared_term = diffie_helman.g_pow_x_mod_p(g, my_secret, p)
+    my_shared_term = diffie_hellman.g_pow_x_mod_p(g, my_secret, p)
 
     print ('g: \t\t{}\np: \t\t{}\nmy_secret: \t{}\nmy_shared_term: {}'.format(g,
         p,
@@ -56,7 +60,7 @@ def begin_diffie_helman_key_exchange(client):
     # calculate common 'symmetric' key using shared key, my secret and p
     # calculates (client_shared**my_secret) % p
     # where client_shared = (g**client_secret) % p
-    symmetric_key = diffie_helman.g_pow_x_mod_p(client_shared, my_secret, p)
+    symmetric_key = diffie_hellman.g_pow_x_mod_p(client_shared, my_secret, p)
 
     print ('\nreceived client_shared: {}\ncalculated symmetric_key: {}'.format(client_shared,symmetric_key))
 
@@ -66,14 +70,26 @@ def begin_diffie_helman_key_exchange(client):
     # return symmetric key for encryption
     return symmetric_key
 
+
 def pad(data):
+    """
+    Pads a given array of bytes to the next multiple of 16
+    """
     length = 16 - (len(data) % 16)
     return data + bytes([length])*length
 
 def unpad(data):
+    """
+    Unpads a given array of bytes based on the number of padded bytes 
+    (stored in last elem of array)
+    """
     return data[:-data[-1]]
 
 def prepare_message(AES_obj, plaintext, cnonce, snonce):
+    """
+    Prepares a message to be encrypted before sending by padding, hashing the plaintext
+    returns: encrypted message to be sent
+    """
     padded_bytes = pad(pickle.dumps(
         (plaintext, cnonce, snonce, hashlib.sha256(bytes(plaintext, 'utf8')).hexdigest())
     ))
@@ -81,24 +97,34 @@ def prepare_message(AES_obj, plaintext, cnonce, snonce):
     return AES_obj.encrypt(padded_bytes)
 
 def handle_client(client_sock, AES_obj):
+    """
+    Function that accepts a client connection socket and an object to handle 
+    encryption and decryption. Responsible for all message sending and receiving
+    """
     cnonce = ''
-    banner = '='*32
     try:
 
         while True:
             print()
             print('='*70)
 
+            # get user plaintext message
             plaintext = input('You: ')
-
+            
+            # generate a random 32 byte nonce
             snonce = gen_nonce()
             generated_nonces.add(snonce)
 
+            # prepare message for sending
+            # include nonce just generated and previous client nonce received
+            # client nonce = '' if this is the first message
             response = prepare_message(AES_obj, plaintext, cnonce, snonce)
             client_sock.sendall(response)
 
+            # receive message
             msg = client_sock.recv(4096)
-            
+
+            # decrypt, unpad and unserialize the message tuple            
             plaintext, cnonce, snonce, _hash = pickle.loads(unpad(AES_obj.decrypt(msg)))
             # print (plaintext, cnonce, snonce, _hash)
             print ('Client: %s' % plaintext)
@@ -114,7 +140,7 @@ def handle_client(client_sock, AES_obj):
                 print (_hash, verify,sep='\n')
             
             if snonce not in generated_nonces:
-                print ('received a nonce back that we did not send out! malicous attack')
+                print ('received a nonce back that we did not send out! malicous actor detected')
                 print (snonce, 'was received but not sent out')
             
             if snonce in seen_nonces:
@@ -145,13 +171,15 @@ def setup_connection():
     """
     print ("Waiting for client to connect\n")
 
+    # get client socket and address of client
     client, addr = SOCK.accept()    
 
     print ("{} joined the building".format(addr))
 
-    symmetric_key = begin_diffie_helman_key_exchange(client)
+    # get symmetric key from DH key exchange
+    symmetric_key = begin_diffie_hellman_key_exchange(client)
     
-    # convert to 32 bit key by hashing and truncating
+    # convert to 32 byte key by hashing and truncating
     AES_key = hashlib.sha256(b'%d' % symmetric_key).hexdigest()[:32]
     print ()
     banner = 'Setting up AES encryption key and IV - Task 2'
@@ -165,9 +193,10 @@ def setup_connection():
     IV = hashlib.sha256(urandom(IV_LENGTH)).hexdigest()[:16]
     print ('generated IV:',IV)
 
-    AES_obj = AES.new(AES_key,
-        AES.MODE_CBC,
-        IV
+    # create AES object to do encryption and decryption
+    AES_obj = AES.new(AES_key,  # 32 byte key dervived from DH key
+        AES.MODE_CBC,           # cipher block chaining
+        IV                      # IV generated
     )
 
     # send IV to client

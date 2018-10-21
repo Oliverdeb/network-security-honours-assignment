@@ -15,10 +15,15 @@ Once python3 and vitualenv are present on the system, the Makefile can create a 
 make setup
 ```
 
+You can alternatively just install pycrypto to your system-wide packages using 
+```shell
+pip3 install pycrypto
+```
+
 # To run
 To run, the server must be started first.
 
-Open two terminal sessions and from the same directory as the project run  `make server` and in the other session run  `make client`. 
+Open two terminal sessions and from the same directory as the project run  `make server` and in the other session run  `make client` (if using the virtualenv created by `make setup`, if you installed to system-wide packages using pip manually you need to run `python3 server.py` followed by `python3 client.py` in another terminal session)
 
 This will start the server, wait for the client to connect and then begin Diffie-Hellman key exchange before allowing you to chat.
 
