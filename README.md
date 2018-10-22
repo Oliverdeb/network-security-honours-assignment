@@ -28,3 +28,5 @@ Open two terminal sessions and from the same directory as the project run  `make
 This will start the server, wait for the client to connect and then begin Diffie-Hellman key exchange before allowing you to chat.
 
 ## Note: This is only configured to work on a single machine (ie. localhost). You can change the IP and port in the first few lines of server.py and client.py if you want it to work over LAN.
+
+## Note: The server must send the first message. After that, the client can reply but you are limited to a single message and must wait for the server to reply with their single message before replying again. 
